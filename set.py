@@ -179,6 +179,33 @@ id = 0
 
 con = sql.connect('testcards.db')
 
+def get_color(im):
+    # BGR format
+    rows = range(120,140)
+    cols = range(98, 102)
+
+    color=''
+    redOrGreen = False
+    for i in rows:
+        for j in cols:
+            bgr = im[i][j]
+            blue = bgr[0]
+            green = bgr[1]
+            red = bgr[2]
+            if red>blue and red>green and red-blue>50:
+                redOrGreen = True
+                color = 'R'
+                break
+            elif green>blue and green>red and green-red>50:
+                redOrGreen = True
+                color = 'G'
+                break
+    if redOrGreen:
+        return color
+    else:
+        return 'P'
+
+
 for im1 in testlist:
     image1 = cv2.imread(os.path.join(dest, im1), 1)
     if image1 is not None:
@@ -202,8 +229,9 @@ for im1 in testlist:
                         cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
                                         (id INT, name TEXT, shape TEXT,
                                         fill TEXT, repeat INT, color TEXT)''')
+                        color = get_color(image1)
                         cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?)",\
-                                        (id, im2[0:4], im2[0], im2[2], im2[1], im2[3]))
+                                        (id, im2[0:4], im2[0], im2[2], im2[1], color))
 
 cur = con.execute("SELECT id, name, shape, fill, repeat, color from TestCards")
 for row in cur:
