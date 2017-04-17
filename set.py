@@ -19,8 +19,7 @@ import cv2
 import numpy as np
 import os
 from matplotlib import pyplot as plt
-from google.appengine.ext import db
-import webapp2
+import sqlite3 as sql
 
 
 def resizeImage(im):
@@ -167,12 +166,6 @@ def findDifference(im):
     # rather than a scalar value as in gray-scale image. You need more attention when writing such code.
     pass
 
-class Cards(db.Model):
-    shape = db.StringProperty(required = True)
-    fill = db.StringProperty(required = True)
-    repeat = db.IntegerProperty(required = True)
-    color = db.StringProperty(required = True)
-
 def preprocess(im):
     gray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray,(5,5),2 )
@@ -182,6 +175,9 @@ def preprocess(im):
 
 imagelist = os.listdir('green1')
 testlist = os.listdir(dest)
+id = 0
+
+con = sql.connect('testcards.db')
 
 for im1 in testlist:
     image1 = cv2.imread(os.path.join(dest, im1), 1)
@@ -196,10 +192,20 @@ for im1 in testlist:
                 diff = cv2.GaussianBlur(diff,(5,5), 2)
                 flag, thresh = cv2.threshold(diff, 200, 255, cv2.THRESH_BINARY)
                 cv2.imshow('thresh', thresh)
-                cv2.waitKey(0)
+                # cv2.waitKey(0)
                 # print (im1, im2, np.sum(thresh))
                 # Set a threshold for match
                 if(np.sum(thresh) < 3500):
-                    print (im1, im2, 'match')
-                    c = Cards(shape=im1[0], fill=im1[2], repeat=im1[1], color=im1[3])
-                    c.put()
+                    id += 1
+                    with con:
+                        cardDB = con.cursor()
+                        cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
+                                        (id INT, name TEXT, shape TEXT,
+                                        fill TEXT, repeat INT, color TEXT)''')
+                        cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?)",\
+                                        (id, im2[0:4], im2[0], im2[2], im2[1], im2[3]))
+
+cur = con.execute("SELECT id, name, shape, fill, repeat, color from TestCards")
+for row in cur:
+   print (row)
+cur = con.execute("DROP TABLE TestCards")
