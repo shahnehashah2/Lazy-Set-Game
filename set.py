@@ -32,7 +32,7 @@ def resizeImage(im):
     ratio = 200.0/im.shape[1]
     dim = (200, int(im.shape[0] * ratio))
     resizedImage = cv2.resize(im, dim, interpolation = cv2.INTER_AREA)
-    print ('Image size=', resizedImage.shape) # Prints tuple (rows, cols, channels)
+    # print ('Image size=', resizedImage.shape) # Prints tuple (rows, cols, channels)
     return resizedImage
 
 def makeRectangle(im, numOfCards, folder, imageName):
@@ -78,13 +78,13 @@ def makeRectangle(im, numOfCards, folder, imageName):
 
 # Preprocess each image and convert then to specific sized rectangles
 # 266 x 200 (height x width) of resized image
-# imagelist = os.listdir('green')
-#
+imagelist = os.listdir('train')
+
 # for imageName in imagelist:
 #     # 3rd arg to imread specifies color or gray scale. >0 is color
-#     im = cv2.imread(os.path.join('green', imageName), 1)
+#     im = cv2.imread(os.path.join('train', imageName), 1)
 #     resizedImage = resizeImage(im)
-#     makeRectangle(resizedImage, 1, 'green1', imageName)
+#     makeRectangle(resizedImage, 1, 'trained', imageName)
 
 
 def makeRectangle1(im, numOfCards, folder):
@@ -115,7 +115,7 @@ def makeRectangle1(im, numOfCards, folder):
     cv2.imshow('contours', img1)
     cv2.waitKey(0)
 
-    i = 0
+    i = 1
     for c in contours:
         # Calculate the perimeter
         peri = cv2.arcLength(c, True)
@@ -144,11 +144,11 @@ def makeRectangle1(im, numOfCards, folder):
 
 # Empty destination folder
 dest = 'testcards'
-# for f in os.listdir(dest):
-#     os.unlink(os.path.join(dest, f))
-#
-# im = cv2.imread(os.path.join('testimage4.jpg'), 1)
-# makeRectangle1(im, 12, dest)
+for f in os.listdir(dest):
+    os.unlink(os.path.join(dest, f))
+
+im = cv2.imread(os.path.join('testimage5.jpg'), 1)
+makeRectangle1(im, 12, dest)
 
 
 def findDifference(im):
@@ -173,17 +173,20 @@ def preprocess(im):
     blur_thresh = cv2.GaussianBlur(thresh,(5,5),5)
     return blur_thresh
 
-imagelist = os.listdir('green1')
+imagelist = os.listdir('trained')
 testlist = os.listdir(dest)
 id = 0
 
 con = sql.connect('testcards.db')
 
+
 def get_color(im):
-    # BGR format
+    # Create a region of interest by specifying rows and columns
     rows = range(120,140)
     cols = range(98, 102)
 
+    # Colors are returned in BGR format
+    # We find whether a card is red or green. If it isn't, then it must be purple
     color=''
     redOrGreen = False
     for i in rows:
@@ -206,34 +209,81 @@ def get_color(im):
         return 'P'
 
 
+def get_fill(im):
+    # im should be only a full or empty card, not striped
+    # Set Region of Interest to a single line passing vertically through
+    # top half of card
+    col = 100
+    rows = range(0,133)
+
+    countColor = 0
+    countWhite = 0
+
+    for i in rows:
+        bgr = im[i][col]
+        blue = bgr[0]
+        green = bgr[1]
+        red = bgr[2]
+        # White or close to white pixel has RGB values over 150 each
+        if (int(blue) + int(green) + int(red)) > 450:
+            countWhite += 1
+        else:
+            countColor += 1
+
+    if (countWhite//countColor) > 10:
+        return 'E'
+    else:
+        return 'F'
+
+
 for im1 in testlist:
     image1 = cv2.imread(os.path.join(dest, im1), 1)
-    if image1 is not None:
-        for im2 in imagelist:
-            image2 = cv2.imread(os.path.join('green1', im2), 1)
-            if image2 is not None:
-                # Calculate per elements difference between two arrays
-                diff = cv2.absdiff(preprocess(image1),preprocess(image2))
-                # Setting a high sigma leads to false matches.
-                # Setting too low leads to false mismatches
-                diff = cv2.GaussianBlur(diff,(5,5), 2)
-                flag, thresh = cv2.threshold(diff, 200, 255, cv2.THRESH_BINARY)
-                cv2.imshow('thresh', thresh)
-                # cv2.waitKey(0)
-                # print (im1, im2, np.sum(thresh))
-                # Set a threshold for match
-                if(np.sum(thresh) < 3500):
-                    id += 1
-                    with con:
-                        cardDB = con.cursor()
-                        cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
-                                        (id INT, name TEXT, shape TEXT,
-                                        fill TEXT, repeat INT, color TEXT)''')
-                        color = get_color(image1)
-                        cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?)",\
-                                        (id, im2[0:4], im2[0], im2[2], im2[1], color))
+    threshold = 3500
+    img2 = ''
+    for im2 in imagelist:
+        image2 = cv2.imread(os.path.join('trained', im2), 1)
+        # Calculate per elements difference between two arrays
+        diff = cv2.absdiff(preprocess(image1),preprocess(image2))
+        # Setting a high sigma leads to false matches.
+        # Setting too low leads to false mismatches
+        diff = cv2.GaussianBlur(diff,(5,5), 2)
+        flag, thresh = cv2.threshold(diff, 200, 255, cv2.THRESH_BINARY)
+        # cv2.imshow('thresh', thresh)
+        # cv2.waitKey(0)
+        print (im1, im2, np.sum(thresh))
+        # Find the images with minimum difference to get the best match
+        if(np.sum(thresh) < threshold):
+            threshold = np.sum(thresh)
+            img2 = im2
+    # Ignore the card with no match
+    if img2 == '':
+        print("No match")
+        continue
+    # Add the matched card into database
+    id += 1
+    with con:
+        cardDB = con.cursor()
+        cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
+                        (id INT, name TEXT, shape TEXT,
+                        repeat INT, fill TEXT, color TEXT)''')
+        color = get_color(image1)
+        # Get the shape, number of repeats in shape and fill from name of training card
+        shape = img2[0]
+        repeat = img2[1]
+        fill = img2[2]
+        # It is difficult to distinguish between full and empty fill.
+        # So explicit check is made in scenario whether fill is not stripe
+        if fill != 'S':
+            fill = get_fill(image1)
+        #Storing the name for easy retrieval
+        name = shape+str(repeat)+fill+color
+        cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?)",\
+                        (id, name, shape, fill, repeat, color))
 
 cur = con.execute("SELECT id, name, shape, fill, repeat, color from TestCards")
 for row in cur:
    print (row)
 cur = con.execute("DROP TABLE TestCards")
+
+###### Image matching not working properly
+###### How can we fix the coordinate the card starts matching from?

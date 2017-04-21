@@ -1,0 +1,271 @@
+# https://code.tutsplus.com/tutorials/creating-a-web-app-from-scratch-using-python-flask-and-mysql--cms-22972
+from flask import Flask, render_template, request
+import cv2
+import numpy as np
+import os
+from matplotlib import pyplot as plt
+import sqlite3 as sql
+
+app = Flask(__name__)
+
+@app.route("/")
+def main():
+    return render_template('index.html')
+
+    # Preprocess each image and convert then to specific sized rectangles
+    # 266 x 200 (height x width) of resized image
+    imagelist = os.listdir('train')
+
+    for imageName in imagelist:
+        # 3rd arg to imread specifies color or gray scale. >0 is color
+        im = cv2.imread(os.path.join('train', imageName), 1)
+        resizedImage = resizeImage(im)
+        makeRectangle(resizedImage, 1, 'trained', imageName)
+
+def resizeImage(im):
+    # Creating a named window to fit image to normal full window size
+    # # cv2.namedWindow('original', flags=cv2.WINDOW_NORMAL)
+    # cv2.imshow('original', im)
+    # cv2.waitKey(0)
+    # print (im.shape)
+    # im.shape is [height, width, RGB components]
+    ratio = 200.0/im.shape[1]
+    dim = (200, int(im.shape[0] * ratio))
+    resizedImage = cv2.resize(im, dim, interpolation = cv2.INTER_AREA)
+    # print ('Image size=', resizedImage.shape) # Prints tuple (rows, cols, channels)
+    return resizedImage
+
+def makeRectangle(im, numOfCards, folder, imageName):
+    gray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
+    # Removing noise from the image using blur
+    blur = cv2.GaussianBlur(gray,(1,1),100)
+    # flag, thresh = cv2.threshold(blur, 120, 255, cv2.THRESH_BINARY)
+    # Using Canny Edge detection
+    edged = cv2.Canny(blur, 30, 200)
+
+    # Highlight all the contours in the image
+    _, contours, _ = cv2.findContours(edged,
+                                cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+
+    # Sort the contours by area so we can get the outside rectangle contour
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:numOfCards]
+    for c in contours:
+        # Calculate the perimeter
+        # c = contours[numOfCards-1]
+        peri = cv2.arcLength(c, True)
+        # For contour c, approximate the curve based on calculated perimeter.
+        # 2nd arg is accuracy, 3rd arg states that the contour curve is closed
+        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        # Get the rectangle enclosing the points specified in arg
+        # rect = cv2.minAreaRect(c)
+        # Find the vertices of the rectangle
+        # r = cv2.boxPoints(rect)
+
+        # Create an array of floats of desired image dimension
+        h = np.array([ [0,0],[266,0],[266,200],[0,200] ], np.float32)
+        # Gotta change the approx data set also to float32
+        approx = approx.astype(np.float32, copy=False)
+
+        # print(approx.dtype, h.dtype)
+        #Transform the approx data array to h
+        transform = cv2.getPerspectiveTransform(approx,h)
+
+        # Apply the transformed perspective to original image
+        warp = cv2.transpose(cv2.warpPerspective(im,transform,(266,200)))
+        # Rotate image by 90 degrees
+        cv2.imwrite(os.path.join(folder, imageName), warp)
+
+
+
+@app.route("/solve", methods=['POST'])
+def solve():
+    # name = request.form['inputName']
+    # if name:
+    #     return ("Hello, " + str(name))
+    # else:
+    #     return "Hello, World"
+
+    # Empty destination folder
+    dest = 'testcards'
+    testlist = os.listdir(dest)
+    for f in testlist:
+        os.unlink(os.path.join(dest, f))
+
+    im = cv2.imread(os.path.join('testimage5.jpg'), 1)
+    makeRectangle1(im, 12, dest)
+
+    imagelist = os.listdir('trained')
+    id = 1
+
+    con = sql.connect('testcards.db')
+
+    for im1 in testlist:
+        image1 = cv2.imread(os.path.join(dest, im1), 1)
+        threshold = 3500
+        img2 = ''
+        for im2 in imagelist:
+            image2 = cv2.imread(os.path.join('trained', im2), 1)
+            # Calculate per elements difference between two arrays
+            diff = cv2.absdiff(preprocess(image1),preprocess(image2))
+            # Setting a high sigma leads to false matches.
+            # Setting too low leads to false mismatches
+            diff = cv2.GaussianBlur(diff,(5,5), 2)
+            flag, thresh = cv2.threshold(diff, 200, 255, cv2.THRESH_BINARY)
+            # cv2.imshow('thresh', thresh)
+            # cv2.waitKey(0)
+            print (im1, im2, np.sum(thresh))
+            # Find the images with minimum difference to get the best match
+            if(np.sum(thresh) < threshold):
+                threshold = np.sum(thresh)
+                img2 = im2
+        # Ignore the card with no match
+        if img2 == '':
+            print("No match")
+            continue
+        # Add the matched card into database
+        id += 1
+        with con:
+            cardDB = con.cursor()
+            cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
+                            (id INT, name TEXT, shape TEXT,
+                            repeat INT, fill TEXT, color TEXT)''')
+            color = get_color(image1)
+            # Get the shape, number of repeats in shape and fill from name of training card
+            shape = img2[0]
+            repeat = img2[1]
+            fill = img2[2]
+            # It is difficult to distinguish between full and empty fill.
+            # So explicit check is made in scenario whether fill is not stripe
+            if fill != 'S':
+                fill = get_fill(image1)
+            #Storing the name for easy retrieval
+            name = shape+str(repeat)+fill+color
+            cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?)",\
+                            (id, name, shape, fill, repeat, color))
+
+    cur = con.execute("SELECT id, name, shape, fill, repeat, color from TestCards")
+    for row in cur:
+       print (row)
+    cur = con.execute("DROP TABLE TestCards")
+
+    return "Hello World"
+
+def makeRectangle1(im, numOfCards, folder):
+    gray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
+    # Removing noise from the image using blur
+    blur = cv2.GaussianBlur(gray,(1,1),100)
+    flag, thresh = cv2.threshold(blur, 120, 255, cv2.THRESH_BINARY)
+    # Using Canny Edge detection - not detecting all edges properly
+    # edged = cv2.Canny(blur, 30, 300)
+    #
+    # plt.subplot(121), plt.imshow(im, cmap='gray')
+    # plt.title('Original Image'), plt.xticks([]), plt.yticks([])
+    # plt.subplot(122), plt.imshow(edged, cmap='gray')
+    # plt.title('Edge Image'), plt.xticks([]), plt.yticks([])
+    # plt.show()
+
+    # Highlight all the contours in the image
+    _, contours, _ = cv2.findContours(thresh,
+                                cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+
+
+    # Sort the contours by area so we can get the outside rectangle contour
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:numOfCards]
+
+    img1 = im.copy()
+    cv2.drawContours(img1, contours, -1, (255,0,0), 3)
+    cv2.namedWindow('contours', flags= cv2.WINDOW_NORMAL)
+    cv2.imshow('contours', img1)
+    cv2.waitKey(0)
+
+    i = 1
+    for c in contours:
+        # Calculate the perimeter
+        peri = cv2.arcLength(c, True)
+        # For contour c, approximate the curve based on calculated perimeter.
+        # 2nd arg is accuracy, 3rd arg states that the contour curve is closed
+        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        # rect = cv2.minAreaRect(c)
+        # # Find the vertices of the rectangle
+        # r = cv2.boxPoints(rect)
+        # print(r)
+
+        # Create an array of floats of desired image dimension
+        h = np.array([ [0, 200],[0,0],[266, 0],[266, 200] ], np.float32)
+        # Gotta change the approx data set also to float32
+        approx = approx.astype(np.float32, copy=False)
+
+        #Transform the approx data array to h
+        transform = cv2.getPerspectiveTransform(approx,h)
+
+        # Apply the transformed perspective to original image
+        warp = cv2.transpose(cv2.warpPerspective(im,transform,(266,200)))
+        # Rotate image by 90 degrees
+        cv2.imwrite(os.path.join(folder, str(i)+'.jpg'), warp)
+        i += 1
+
+def preprocess(im):
+    gray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray,(5,5),2 )
+    thresh = cv2.adaptiveThreshold(blur,255,1,1,11,1)
+    blur_thresh = cv2.GaussianBlur(thresh,(5,5),5)
+    return blur_thresh
+
+def get_color(im):
+    # Create a region of interest by specifying rows and columns
+    rows = range(120,140)
+    cols = range(98, 102)
+
+    # Colors are returned in BGR format
+    # We find whether a card is red or green. If it isn't, then it must be purple
+    color=''
+    redOrGreen = False
+    for i in rows:
+        for j in cols:
+            bgr = im[i][j]
+            blue = bgr[0]
+            green = bgr[1]
+            red = bgr[2]
+            if red>blue and red>green and red-blue>50:
+                redOrGreen = True
+                color = 'R'
+                break
+            elif green>blue and green>red and green-red>50:
+                redOrGreen = True
+                color = 'G'
+                break
+    if redOrGreen:
+        return color
+    else:
+        return 'P'
+
+
+def get_fill(im):
+    # im should be only a full or empty card, not striped
+    # Set Region of Interest to a single line passing vertically through
+    # top half of card
+    col = 100
+    rows = range(0,133)
+
+    countColor = 0
+    countWhite = 0
+
+    for i in rows:
+        bgr = im[i][col]
+        blue = bgr[0]
+        green = bgr[1]
+        red = bgr[2]
+        # White or close to white pixel has RGB values over 150 each
+        if (int(blue) + int(green) + int(red)) > 450:
+            countWhite += 1
+        else:
+            countColor += 1
+
+    if (countWhite//countColor) > 10:
+        return 'E'
+    else:
+        return 'F'
+
+
+if __name__ == "__main__":
+    app.run()
