@@ -79,12 +79,6 @@ def makeRectangle(im, numOfCards, folder, imageName):
 
 @app.route("/solve", methods=['POST'])
 def solve():
-    # name = request.form['inputName']
-    # if name:
-    #     return ("Hello, " + str(name))
-    # else:
-    #     return "Hello, World"
-
     # Empty destination folder
     dest = 'testcards'
     testlist = os.listdir(dest)
@@ -95,28 +89,28 @@ def solve():
     makeRectangle1(im, 12, dest)
 
     imagelist = os.listdir('trained')
-    id = 1
+    id = 0
 
     con = sql.connect('testcards.db')
 
     for im1 in testlist:
         image1 = cv2.imread(os.path.join(dest, im1), 1)
-        threshold = 3500
         img2 = ''
+        bestMatch = 4000000
         for im2 in imagelist:
             image2 = cv2.imread(os.path.join('trained', im2), 1)
             # Calculate per elements difference between two arrays
             diff = cv2.absdiff(preprocess(image1),preprocess(image2))
             # Setting a high sigma leads to false matches.
             # Setting too low leads to false mismatches
-            diff = cv2.GaussianBlur(diff,(5,5), 2)
-            flag, thresh = cv2.threshold(diff, 200, 255, cv2.THRESH_BINARY)
+            # diff = cv2.GaussianBlur(diff,(5,5), 2)
+            # flag, thresh = cv2.threshold(diff, 200, 255, cv2.THRESH_BINARY)
             # cv2.imshow('thresh', thresh)
             # cv2.waitKey(0)
-            print (im1, im2, np.sum(thresh))
+            # print (im1, im2, np.sum(diff))
             # Find the images with minimum difference to get the best match
-            if(np.sum(thresh) < threshold):
-                threshold = np.sum(thresh)
+            if(np.sum(diff) < bestMatch):
+                bestMatch = np.sum(diff)
                 img2 = im2
         # Ignore the card with no match
         if img2 == '':
@@ -129,15 +123,17 @@ def solve():
             cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
                             (id INT, name TEXT, shape TEXT,
                             repeat INT, fill TEXT, color TEXT)''')
+
+            # It is difficult to distinguish between full and empty fill.
+            # So explicit check is made in scenario whether fill is not stripe
+            fill = img2[2]
+            if fill != 'S':
+                fill = get_fill(image1)
             color = get_color(image1)
             # Get the shape, number of repeats in shape and fill from name of training card
             shape = img2[0]
             repeat = img2[1]
-            fill = img2[2]
-            # It is difficult to distinguish between full and empty fill.
-            # So explicit check is made in scenario whether fill is not stripe
-            if fill != 'S':
-                fill = get_fill(image1)
+
             #Storing the name for easy retrieval
             name = shape+str(repeat)+fill+color
             cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?)",\
@@ -172,11 +168,11 @@ def makeRectangle1(im, numOfCards, folder):
     # Sort the contours by area so we can get the outside rectangle contour
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:numOfCards]
 
-    img1 = im.copy()
-    cv2.drawContours(img1, contours, -1, (255,0,0), 3)
-    cv2.namedWindow('contours', flags= cv2.WINDOW_NORMAL)
-    cv2.imshow('contours', img1)
-    cv2.waitKey(0)
+    # img1 = im.copy()
+    # cv2.drawContours(img1, contours, -1, (255,0,0), 3)
+    # cv2.namedWindow('contours', flags= cv2.WINDOW_NORMAL)
+    # cv2.imshow('contours', img1)
+    # cv2.waitKey(0)
 
     i = 1
     for c in contours:
@@ -185,24 +181,51 @@ def makeRectangle1(im, numOfCards, folder):
         # For contour c, approximate the curve based on calculated perimeter.
         # 2nd arg is accuracy, 3rd arg states that the contour curve is closed
         approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        # rect = cv2.minAreaRect(c)
-        # # Find the vertices of the rectangle
-        # r = cv2.boxPoints(rect)
-        # print(r)
 
         # Create an array of floats of desired image dimension
         h = np.array([ [0, 200],[0,0],[266, 0],[266, 200] ], np.float32)
         # Gotta change the approx data set also to float32
         approx = approx.astype(np.float32, copy=False)
 
+        # Check whether approx is in portrait mode. If not, change from landscape to portrait
+        x1 = approx[0][0][0]
+        y1 = approx[0][0][1]
+        x2 = approx[1][0][0]
+        y2 = approx[1][0][1]
+        x3 = approx[2][0][0]
+        y3 = approx[2][0][1]
+
+        l1 = ((x1-x2) ** 2) + ((y1-y2) ** 2)
+        l2 = ((x2-x3) ** 2) + ((y2-y3) ** 2)
+
+        if l2<l1:
+            # Shift the array once clockwise
+            approx = shift(approx)
+
         #Transform the approx data array to h
         transform = cv2.getPerspectiveTransform(approx,h)
 
+        # for j,x in enumerate(approx[0]):
+            # print(j,x.tolist())
+            # cv2.putText(im, str(j), tuple(int(y) for y in x.tolist()), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255))
+        # cv2.namedWindow('contours', flags= cv2.WINDOW_NORMAL)
+        # cv2.imshow('contours', im)
+        # cv2.waitKey(0)
         # Apply the transformed perspective to original image
         warp = cv2.transpose(cv2.warpPerspective(im,transform,(266,200)))
+        # warp = cv2.warpPerspective(im,transform,(266,200))
         # Rotate image by 90 degrees
         cv2.imwrite(os.path.join(folder, str(i)+'.jpg'), warp)
         i += 1
+
+
+def shift(seq):
+    temp = seq[3].copy()
+    for i in range(3, 0, -1):
+        seq[i] = seq[i-1]
+    seq[0] = temp
+    return seq
+
 
 def preprocess(im):
     gray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
@@ -211,33 +234,36 @@ def preprocess(im):
     blur_thresh = cv2.GaussianBlur(thresh,(5,5),5)
     return blur_thresh
 
-def get_color(im):
-    # Create a region of interest by specifying rows and columns
-    rows = range(120,140)
-    cols = range(98, 102)
 
-    # Colors are returned in BGR format
-    # We find whether a card is red or green. If it isn't, then it must be purple
-    color=''
-    redOrGreen = False
-    for i in rows:
-        for j in cols:
+def get_color(im):
+    height = 266
+    width = 200
+
+    # Color is returned in BGR format
+    for i in range(height):
+        for j in range(width):
             bgr = im[i][j]
-            blue = bgr[0]
-            green = bgr[1]
-            red = bgr[2]
-            if red>blue and red>green and red-blue>50:
-                redOrGreen = True
-                color = 'R'
-                break
-            elif green>blue and green>red and green-red>50:
-                redOrGreen = True
-                color = 'G'
-                break
-    if redOrGreen:
-        return color
+            if sum(bgr) > 500:
+                im[i][j] = [0,0,0]
+
+    # To count the non-black pixels in image, create a grayscale copy of it
+    # np.mean averages over all pixels (including black)
+    im1 = cv2.cvtColor( im, cv2.COLOR_RGB2GRAY )
+    bgr_mean = (np.mean(im, axis=(0,1)) * im1.size) // np.count_nonzero(im1)
+
+    color=''
+    blue = bgr_mean[0]
+    green = bgr_mean[1]
+    red = bgr_mean[2]
+
+    if red>blue and red> green and red-green>50:
+        color = 'R'
+    elif green>blue and green>red and green-red>50:
+        color = 'G'
     else:
-        return 'P'
+        color = 'P'
+    return color
+
 
 
 def get_fill(im):

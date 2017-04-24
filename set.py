@@ -147,7 +147,7 @@ dest = 'testcards'
 for f in os.listdir(dest):
     os.unlink(os.path.join(dest, f))
 
-im = cv2.imread(os.path.join('testimage5.jpg'), 1)
+im = cv2.imread(os.path.join('testimage4.jpg'), 1)
 makeRectangle1(im, 12, dest)
 
 
