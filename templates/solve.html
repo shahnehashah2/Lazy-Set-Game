@@ -2,7 +2,13 @@
 
 {% block matter %}
     <img src="{{ file }}" width="400" height="400"/>
-    {% for set in sets %}
-        <p>{{ set }}</p>
+    <br>
+    <p><strong>Following are the sets found in the image:</strong></p>
+    {% for set in sets_images %}
+        <p>
+          {% for i in set %}
+              <img src="{{ url_for('static', filename='testcards/'+i) }}" width="75" height="100"/>
+          {% endfor %}
+        </p>
     {% endfor %}
 {% endblock matter %}

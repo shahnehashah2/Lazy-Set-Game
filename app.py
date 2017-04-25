@@ -7,10 +7,10 @@ import os
 import sqlite3 as sql
 import itertools
 
-UPLOAD_FOLDER = 'tmp'
+UPLOAD_FOLDER = '.'
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
 
-app = Flask(__name__, static_folder='tmp', static_url_path = '')
+app = Flask(__name__, static_folder='.', static_url_path = '')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 @app.route("/")
@@ -102,9 +102,25 @@ def solve():
     # Find all possible combinations of 3 cards without repetition
     all_combi = list(itertools.combinations(coded_name, 3))
     sets = find_sets(all_combi)
+    sets_images = get_imageNames(sets)
     # Note- Images might be displayed rotated in browsers other than Firefox
-    return render_template('solve.html', sets=sets,
+    return render_template('solve.html', sets=sets, sets_images=sets_images,
                     file=url_for('static', filename=file.filename))
+
+def get_imageNames(sets):
+    con = sql.connect('testcards.db')
+    cardDB = con.cursor()
+
+    setsName = []
+    for set in sets:
+        setName = []
+        for i in set:
+            cardDB.execute("SELECT idName from TestCards WHERE name = :i",\
+                        {"i": i})
+            row = cardDB.fetchone()
+            setName.append(row[0])
+        setsName.append(setName)
+    return setsName
 
 
 def validateInput(file, numOfCards):
@@ -114,10 +130,10 @@ def validateInput(file, numOfCards):
         return redirect(url_for('main'))
     filename = file.filename
     if allowed_file(filename):
-        if numOfCards.isdigit():
+        if numOfCards.isdigit() and int(numOfCards)>2:
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         else:
-            print('Number of cards must be numeric')
+            print('Number of cards must be numeric >3')
             return redirect(url_for('main'))
     else:
         print('Only JPEG or PNG files')
@@ -171,14 +187,13 @@ def find_matches(dest, train_set):
     id = 0
     coded_name = []
     con = sql.connect('testcards.db')
-    # cur = con.execute("DROP TABLE TestCards")
     cardDB = con.cursor()
+    cardDB.execute("DROP TABLE IF EXISTS TestCards")
     cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
-                    (id INT, name TEXT, shape TEXT, repeat INT,
-                    fill TEXT, color TEXT, code_name TEXT)''')
-    # Delete previous entries of the table, if any, and vacuum from memory
-    cardDB.execute("DELETE FROM TestCards")
-    cardDB.execute("VACUUM")
+                    (id INT, name TEXT, idName TEXT, code_name TEXT)''')
+    # # Delete previous entries of the table, if any, and vacuum from memory
+    # cardDB.execute("DELETE FROM TestCards")
+    # cardDB.execute("VACUUM")
 
     dict_name = {'P':'1', 'G':'2', 'R':'3', 'D':'1', 'O':'2', 'W':'3',
                         'E':'1', 'F':'2', 'S':'3'}
@@ -206,9 +221,9 @@ def find_matches(dest, train_set):
         if img2 == '':
             print("No match")
             continue
+
         # Add the matched card into database
         id += 1
-
         # It is difficult to distinguish between full and empty fill.
         # So explicit check is made in scenario whether fill is not stripe
         fill = img2[2]
@@ -223,11 +238,11 @@ def find_matches(dest, train_set):
         name = shape+str(repeat)+fill+color
         name1 = dict_name[shape]+str(repeat)+dict_name[fill]+dict_name[color]
         coded_name.append(name1)
-        cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?,?)",\
-                        (id, name, shape, fill, repeat, color, name1))
-    # cur = con.execute("SELECT id, name, shape, fill, repeat, color, code_name from TestCards")
-    # for row in cur:
-    #    print (row)
+        cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?)",\
+                        (id, name, im1, name1))
+    cur = con.execute("SELECT id, name, idName, code_name from TestCards")
+    for row in cur:
+       print (row)
     con.commit()
     return coded_name
 
