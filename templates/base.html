@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Lazy Set Game</title>
+        <link href="http://getbootstrap.com/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="http://getbootstrap.com/examples/jumbotron-narrow/jumbotron-narrow.css" rel="stylesheet">
+    </head>
+    <style type="text/css">
+      img {
+        image-orientation: from-image;
+      }
+    </style>
+
+    <body>
+        <div class="container">
+            <a class="homelogo" href="/">Set Game</a>
+            <a class="rules" href="/">Rules</a>
+            <a href="http://www.setgame.com/sites/default/files/instructions/SET%20INSTRUCTIONS%20-%20ENGLISH.pdf">
+                How to Play
+            </a>
+            <br><br>
+
+            {% block matter %}
+            {% endblock matter %}
+        </div>
+    </body>
+</html>

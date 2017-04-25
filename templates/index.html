@@ -1,27 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <title>Lazy Set Game</title>
-    <link href="http://getbootstrap.com/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="http://getbootstrap.com/examples/jumbotron-narrow/jumbotron-narrow.css" rel="stylesheet">
-</head>
-
-<body>
-    <div class="container">
-        <h1>Set Game App</h1>
-
-        <form action ="/solve" method="post">
-            <p>Click the button below to get all possible sets of this image</p>
-            <img src="../testimage5.jpg">
+{% block matter %}
+        <form action ="/solve" method="post" enctype="multipart/form-data">
+            <img src="http://www.setgame.com/sites/default/files/set-logo-sq.jpg">
+            <p>Upload a game in progress image and see all possible sets</p>
             <p>
-                <label for="inputName">Name</label>
-                <input type="name" name="inputName"
-                      class="form-control" autofocus>
+                <label for="file">File (must be JPEG or PNG)</label>
+                <input type="file" name="file">
+                <label for="numOfCards">Number of cards in image</label>
+                <input type="text" name="numOfCards">
+                <div class="text-danger">{{ error }}</div>
                 <button class="btn btn-lg btn-success">
-                    Say hello
+                    Find Sets
                 </button>
             </p>
         </form>
-    </div>
-</body>
+{% endblock matter %}

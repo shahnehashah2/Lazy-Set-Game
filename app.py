@@ -1,39 +1,42 @@
 # https://code.tutsplus.com/tutorials/creating-a-web-app-from-scratch-using-python-flask-and-mysql--cms-22972
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, url_for
 import cv2
 import numpy as np
 import os
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 import sqlite3 as sql
+import itertools
 
-app = Flask(__name__)
+UPLOAD_FOLDER = 'tmp'
+ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
+
+app = Flask(__name__, static_folder='tmp', static_url_path = '')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 @app.route("/")
-def main():
-    return render_template('index.html')
-
+def main(error=""):
     # Preprocess each image and convert then to specific sized rectangles
     # 266 x 200 (height x width) of resized image
-    imagelist = os.listdir('train')
 
-    for imageName in imagelist:
-        # 3rd arg to imread specifies color or gray scale. >0 is color
-        im = cv2.imread(os.path.join('train', imageName), 1)
-        resizedImage = resizeImage(im)
-        makeRectangle(resizedImage, 1, 'trained', imageName)
+    # ******************************* Uncomment when demoing***********
+    # imagelist = os.listdir('train')
+    #
+    # for imageName in imagelist:
+    #     # 3rd arg to imread specifies color or gray scale. >0 is color
+    #     im = cv2.imread(os.path.join('train', imageName), 1)
+    #     resizedImage = resizeImage(im)
+    #     makeRectangle(resizedImage, 1, 'trained', imageName)
+
+    return render_template('index.html', error=error)
+
 
 def resizeImage(im):
-    # Creating a named window to fit image to normal full window size
-    # # cv2.namedWindow('original', flags=cv2.WINDOW_NORMAL)
-    # cv2.imshow('original', im)
-    # cv2.waitKey(0)
-    # print (im.shape)
-    # im.shape is [height, width, RGB components]
+    # im.shape is [height, width, RGB channels]
     ratio = 200.0/im.shape[1]
     dim = (200, int(im.shape[0] * ratio))
     resizedImage = cv2.resize(im, dim, interpolation = cv2.INTER_AREA)
-    # print ('Image size=', resizedImage.shape) # Prints tuple (rows, cols, channels)
     return resizedImage
+
 
 def makeRectangle(im, numOfCards, folder, imageName):
     gray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
@@ -76,22 +79,109 @@ def makeRectangle(im, numOfCards, folder, imageName):
         cv2.imwrite(os.path.join(folder, imageName), warp)
 
 
-
 @app.route("/solve", methods=['POST'])
 def solve():
-    # Empty destination folder
+    # Get the uploaded file
+    file = request.files['file']
+    numOfCards = request.form['numOfCards']
+    # Checking for no filename or unallowed extensions
+    validateInput(file, numOfCards)
+    numOfCards = int(numOfCards)
+
     dest = 'testcards'
-    testlist = os.listdir(dest)
-    for f in testlist:
-        os.unlink(os.path.join(dest, f))
+    train_set = 'trained'
+    # Empty destination folder
+    empty(dest)
+    # Read the uploaded image and convert all card images into rectangles
+    im = cv2.imread(os.path.join(app.config['UPLOAD_FOLDER'], file.filename), 1)
+    makeRectangle1(im, numOfCards, dest)
 
-    im = cv2.imread(os.path.join('testimage5.jpg'), 1)
-    makeRectangle1(im, 12, dest)
+    # Match the dest cards to ones in train_set and store the coded names of
+    # the cards in coded_name array
+    coded_name = find_matches(dest, train_set)
+    # Find all possible combinations of 3 cards without repetition
+    all_combi = list(itertools.combinations(coded_name, 3))
+    sets = find_sets(all_combi)
+    # Note- Images might be displayed rotated in browsers other than Firefox
+    return render_template('solve.html', sets=sets,
+                    file=url_for('static', filename=file.filename))
 
-    imagelist = os.listdir('trained')
-    id = 0
 
+def validateInput(file, numOfCards):
+    if file.filename == '':
+        print('No selected file')
+        # ***************** How do i send error msg with redirect?*****
+        return redirect(url_for('main'))
+    filename = file.filename
+    if allowed_file(filename):
+        if numOfCards.isdigit():
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        else:
+            print('Number of cards must be numeric')
+            return redirect(url_for('main'))
+    else:
+        print('Only JPEG or PNG files')
+        return redirect(url_for('main'))
+
+def allowed_file(f):
+    return '.' in f and f.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def find_sets(all_combi):
+    con = sql.connect('matches.db')
+    cardDB = con.cursor()
+    cardDB.execute('''CREATE TABLE IF NOT EXISTS Matches
+                    (id INT, card1_code TEXT, card2_code TEXT,
+                    card3_code TEXT, card1 TEXT, card2 TEXT, card3 TEXT)''')
+    # Delete previous entries of the table, if any, and vacuum from memory
+    cardDB.execute("DELETE FROM Matches")
+    cardDB.execute("VACUUM")
+
+    count = 0
+    for i in all_combi:
+        if (int(i[0][0]) + int(i[1][0]) + int(i[2][0])) % 3 == 0:
+            if (int(i[0][1]) + int(i[1][1]) + int(i[2][1])) % 3 == 0:
+                if (int(i[0][2]) + int(i[1][2]) + int(i[2][2])) % 3 == 0:
+                    if (int(i[0][3]) + int(i[1][3]) + int(i[2][3])) % 3 == 0:
+                        count += 1
+                        items = [reverse_dict(j) for j in i]
+                        cardDB.execute("INSERT INTO Matches VALUES (?,?,?,?,?,?,?)",\
+                                        (count, i[0], i[1], i[2], items[0], items[1], items[2]))
+    con.commit()
+    cur = con.execute("SELECT card1, card2, card3 from Matches")
+    sets = []
+    for row in cur:
+       sets.append([row[0], row[1], row[2]])
+    if len(sets)>0:
+        return sets
+    else:
+        return "No set found"
+
+def reverse_dict(item):
     con = sql.connect('testcards.db')
+    with con:
+        cardDB = con.cursor()
+        cardDB.execute("SELECT name from TestCards WHERE code_name = :item",\
+                            {"item": item})
+        row = cardDB.fetchone()
+    return row[0]
+
+def find_matches(dest, train_set):
+    testlist = os.listdir(dest)
+    imagelist = os.listdir(train_set)
+    id = 0
+    coded_name = []
+    con = sql.connect('testcards.db')
+    # cur = con.execute("DROP TABLE TestCards")
+    cardDB = con.cursor()
+    cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
+                    (id INT, name TEXT, shape TEXT, repeat INT,
+                    fill TEXT, color TEXT, code_name TEXT)''')
+    # Delete previous entries of the table, if any, and vacuum from memory
+    cardDB.execute("DELETE FROM TestCards")
+    cardDB.execute("VACUUM")
+
+    dict_name = {'P':'1', 'G':'2', 'R':'3', 'D':'1', 'O':'2', 'W':'3',
+                        'E':'1', 'F':'2', 'S':'3'}
 
     for im1 in testlist:
         image1 = cv2.imread(os.path.join(dest, im1), 1)
@@ -118,33 +208,34 @@ def solve():
             continue
         # Add the matched card into database
         id += 1
-        with con:
-            cardDB = con.cursor()
-            cardDB.execute('''CREATE TABLE IF NOT EXISTS TestCards
-                            (id INT, name TEXT, shape TEXT,
-                            repeat INT, fill TEXT, color TEXT)''')
 
-            # It is difficult to distinguish between full and empty fill.
-            # So explicit check is made in scenario whether fill is not stripe
-            fill = img2[2]
-            if fill != 'S':
-                fill = get_fill(image1)
-            color = get_color(image1)
-            # Get the shape, number of repeats in shape and fill from name of training card
-            shape = img2[0]
-            repeat = img2[1]
+        # It is difficult to distinguish between full and empty fill.
+        # So explicit check is made in scenario whether fill is not stripe
+        fill = img2[2]
+        if fill != 'S':
+            fill = get_fill(image1)
+        color = get_color(image1)
+        # Get the shape and number of repeats in shape from name of training card
+        shape = img2[0]
+        repeat = img2[1]
 
-            #Storing the name for easy retrieval
-            name = shape+str(repeat)+fill+color
-            cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?)",\
-                            (id, name, shape, fill, repeat, color))
+        #Storing the name for easy retrieval
+        name = shape+str(repeat)+fill+color
+        name1 = dict_name[shape]+str(repeat)+dict_name[fill]+dict_name[color]
+        coded_name.append(name1)
+        cardDB.execute("INSERT INTO TestCards VALUES (?,?,?,?,?,?,?)",\
+                        (id, name, shape, fill, repeat, color, name1))
+    # cur = con.execute("SELECT id, name, shape, fill, repeat, color, code_name from TestCards")
+    # for row in cur:
+    #    print (row)
+    con.commit()
+    return coded_name
 
-    cur = con.execute("SELECT id, name, shape, fill, repeat, color from TestCards")
-    for row in cur:
-       print (row)
-    cur = con.execute("DROP TABLE TestCards")
 
-    return "Hello World"
+def empty(dest):
+    testlist = os.listdir(dest)
+    for f in testlist:
+        os.unlink(os.path.join(dest, f))
 
 def makeRectangle1(im, numOfCards, folder):
     gray = cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
@@ -195,6 +286,7 @@ def makeRectangle1(im, numOfCards, folder):
         x3 = approx[2][0][0]
         y3 = approx[2][0][1]
 
+        # Get the distance squared of top edge and left edge
         l1 = ((x1-x2) ** 2) + ((y1-y2) ** 2)
         l2 = ((x2-x3) ** 2) + ((y2-y3) ** 2)
 
