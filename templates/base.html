@@ -8,18 +8,17 @@
     <style type="text/css">
       img {
         image-orientation: from-image;
+        margin: 20px;
       }
     </style>
 
     <body>
         <div class="container">
-            <a class="homelogo" href="/">Set Game</a>
-            <a class="rules" href="/">Rules</a>
-            <a href="http://www.setgame.com/sites/default/files/instructions/SET%20INSTRUCTIONS%20-%20ENGLISH.pdf">
-                How to Play
-            </a>
-            <br><br>
-
+            <ul class = "nav nav-tabs">
+                <li><a href = "{{ url_for('main') }}">Home</a></li>
+                <li><a href = "{{ url_for('rules') }}">Directions</a></li>
+                <li><a href = "http://www.setgame.com/sites/default/files/instructions/SET%20INSTRUCTIONS%20-%20ENGLISH.pdf">Game Rules</a></li>
+            </ul>
             {% block matter %}
             {% endblock matter %}
         </div>

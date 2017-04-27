@@ -1,18 +1,30 @@
 {% extends "base.html" %}
 
 {% block matter %}
-        <form action ="/solve" method="post" enctype="multipart/form-data">
+    <div class="row vertical-center-row">
+        <div class="text-center col-md-12 col-lg-12">
             <img src="http://www.setgame.com/sites/default/files/set-logo-sq.jpg">
-            <p>Upload a game in progress image and see all possible sets</p>
-            <p>
-                <label for="file">File (must be JPEG or PNG)</label>
-                <input type="file" name="file">
-                <label for="numOfCards">Number of cards in image</label>
-                <input type="text" name="numOfCards">
+            <br>Outwit your friends by quickly finding all the sets in a game in progress!
+            <br>Take a picture of the cards drawn and upload it here..<br><br>
+        </div>
+    </div>
+    <div class="row vertical-center-row">
+        <div class="col-md-12 col-lg-12">
+            <form action ="/solve" method="post" enctype="multipart/form-data">
                 <div class="text-danger">{{ error }}</div>
-                <button class="btn btn-lg btn-success">
-                    Find Sets
-                </button>
-            </p>
-        </form>
+                <div class="form-group">
+                    <label for="numOfCards">Number of cards</label>
+                    <input type="text" name="numOfCards" class="form-control"
+                        placeholder="Enter # of cards in image">
+                </div>
+                <div class="form-group">
+                    <label for="file">Image File(JPEG or PNG)</label>
+                    <input type="file" class="form-control-file" name="file">
+                </div>
+                <div class="text-center">
+                    <button class="btn btn-lg btn-primary">Find Sets</button>
+                </div>
+            </form>
+        </div>
+    </div>
 {% endblock matter %}

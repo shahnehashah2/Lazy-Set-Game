@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block matter %}
+<pre>
+This app uses OpenCV2(version --- ), Flask, SQLite3 with Python(version 3.x) and Jinja2.
+In order to run it on your computer, please complete the following steps
+after downloading the required software:
+    1.> Folder 'testcards' stores uploaded image .
+        Need to create an empty folder before game starts.
+
+    2.> Folder 'train' stores raw training photos
+        (only empty and striped cards of a single color)
+
+    3.> Naming convention for cards in 'train' folder:
+            a.> Shape: D - Diamond, W - Wiggly, O - Oval
+            b.> Number: 1, 2 or 3 for # of occurences of the symbol
+            c.> Fill: S - Striped, E - Empty
+                (solid cards can be ignored for now)
+        For example, 1 diamond with stripes is to be stored as D1S.jpg
+        The program will check for color explicitly.
+
+    4.> Folder 'trained' stores processed images from 'train' folder.
+        Need to create an empty folder before game starts.
+
+    5.> The current working folder stores uploaded game image.
+
+Recommendation to snap game image for maximum accuracy of program:
+
+    1.> Photograph in a brightly lit space, with white light
+    2.> Cards should be laid out on black background
+    3.> No overlapping or cropping cards edges - Complete cards must be visible
+    4.> Maximize card area by minimizing black border area
+    5.> Avoid Flash for even brightness
+
+</pre>
+{% endblock matter %}

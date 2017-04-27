@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 
 {% block matter %}
-    <img src="{{ file }}" width="400" height="400"/>
-    <br>
-    <p><strong>Following are the sets found in the image:</strong></p>
+    <div class="row vertical-center-row">
+        <img class="center-block img-responsive" src="{{ file }}" width="400" height="400"/>
+        <br>
+        <p class="text-center"><strong>{{ found }} sets were found in this image</strong></p>
+    </div>
     {% for set in sets_images %}
-        <p>
+        <p class="text-center">
           {% for i in set %}
               <img src="{{ url_for('static', filename='testcards/'+i) }}" width="75" height="100"/>
           {% endfor %}
