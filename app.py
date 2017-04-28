@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash
 import cv2
 import numpy as np
 import os
@@ -12,6 +12,9 @@ ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
 # URL path is empty string so we don't have to provide absolute path
 app = Flask(__name__, static_folder='.', static_url_path = '')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+# Set session secret key
+app.secret_key = 'some_secret'
+
 
 @app.route("/rules", methods=['GET'])
 def rules():
@@ -19,9 +22,10 @@ def rules():
 
 
 @app.route("/")
-def main(error=""):
+def main():
     # Preprocess each image and convert then to specific sized rectangles
     # 266 x 200 (height x width) of resized image
+    print('$$$$$$$$$$$$$$$$$$$reaches here***************')
     imagelist = os.listdir('train')
     # Empty the trained folder to re-train
 
@@ -33,8 +37,7 @@ def main(error=""):
     #     im = cv2.imread(os.path.join('train', imageName), 1)
     #     resizedImage = resizeImage(im)
     #     makeRectangle(resizedImage, 1, 'trained', 'doTrain', imageName)
-
-    return render_template('index.html', error=error)
+    return render_template('index.html')
 
 
 @app.route("/solve", methods=['POST'])
@@ -43,7 +46,11 @@ def solve():
     file = request.files['file']
     numOfCards = request.form['numOfCards']
     # Checking for no filename or unallowed extensions
-    validateInput(file, numOfCards)
+    error = validateInput(file, numOfCards)
+    if error:
+        flash(error)
+        # Render and do not redirect to avoid re-processing of training images
+        return render_template('index.html')
     numOfCards = int(numOfCards)
 
     dest = 'testcards'
@@ -141,42 +148,21 @@ def makeRectangle(im, numOfCards, folder, trainOrTest, imageName=''):
         cv2.imwrite(os.path.join(folder, imName), warp)
 
 
-# Get the actual names of images in a set
-# (like [D3EG.jpg, D2EG.jpg, D1EG.jpg]) for retrieving the images from the
-# test folder. Map the image names from their codenames in database
-def get_imageNames(sets):
-    con = sql.connect('testcards.db')
-    cardDB = con.cursor()
-
-    setsName = []
-    for set in sets:
-        setName = []
-        for i in set:
-            cardDB.execute("SELECT idName from TestCards WHERE name = :i",\
-                        {"i": i})
-            row = cardDB.fetchone()
-            setName.append(row[0])
-        setsName.append(setName)
-    return setsName
-
-
 # Check whether a valid file and a valid number of cards are entered
 def validateInput(file, numOfCards):
+    error = ''
     if file.filename == '':
-        print('No selected file')
-        # ***************** How do i send error msg with redirect?*****
-        return redirect(url_for('main'))
+        error = 'No selected file'
     filename = file.filename
     if allowed_file(filename):
         if numOfCards.isdigit() and int(numOfCards) > 2:
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         else:
             # There must be atleast 3 cards to check for a set
-            print('Number of cards must be numeric >3')
-            return redirect(url_for('main'))
+            error = 'Number of cards must be numeric > 3'
     else:
-        print('Only JPEG or PNG files')
-        return redirect(url_for('main'))
+        error = 'Only JPEG or PNG files'
+    return error
 
 
 # Check whether the uploaded file is a jpg or png image
@@ -214,6 +200,25 @@ def find_sets(all_combi):
     else:
         # ********** Make sure this is working************
         return "None"
+
+# Get the actual names of images in a set
+# (like [D3EG.jpg, D2EG.jpg, D1EG.jpg]) for retrieving the images from the
+# test folder. Map the image names from their codenames in database
+def get_imageNames(sets):
+    con = sql.connect('testcards.db')
+    cardDB = con.cursor()
+
+    setsName = []
+    for set in sets:
+        setName = []
+        for i in set:
+            cardDB.execute("SELECT idName from TestCards WHERE name = :i",\
+                        {"i": i})
+            row = cardDB.fetchone()
+            setName.append(row[0])
+        setsName.append(setName)
+    return setsName
+
 
 # Get the alphabetic code name from numeric code name
 def reverse_dict(item):
