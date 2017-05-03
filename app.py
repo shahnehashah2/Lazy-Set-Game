@@ -1,3 +1,6 @@
+# Thank you Brian (https://github.com/bgschiller) for this fun idea for my project
+# and Mike (http://schmidmt.com/) for helping me finish it.
+
 from flask import Flask, render_template, request, redirect, url_for, flash
 import cv2
 import numpy as np
@@ -25,18 +28,16 @@ def rules():
 def main():
     # Preprocess each image and convert then to specific sized rectangles
     # 266 x 200 (height x width) of resized image
-    print('$$$$$$$$$$$$$$$$$$$reaches here***************')
     imagelist = os.listdir('train')
     # Empty the trained folder to re-train
+    empty('trained')
 
-    #***************Uncomment before demoing******
     # Needs to be run the first time this program is executed on a computer
-    # empty('trained')
-    # for imageName in imagelist:
-    #     # 3rd arg to imread specifies color or gray scale. >0 is color
-    #     im = cv2.imread(os.path.join('train', imageName), 1)
-    #     resizedImage = resizeImage(im)
-    #     makeRectangle(resizedImage, 1, 'trained', 'doTrain', imageName)
+    for imageName in imagelist:
+        # 3rd arg to imread specifies color or gray scale. >0 is color
+        im = cv2.imread(os.path.join('train', imageName), 1)
+        resizedImage = resizeImage(im)
+        makeRectangle(resizedImage, 1, 'trained', 'doTrain', imageName)
     return render_template('index.html')
 
 
@@ -201,6 +202,7 @@ def find_sets(all_combi):
         # ********** Make sure this is working************
         return "None"
 
+
 # Get the actual names of images in a set
 # (like [D3EG.jpg, D2EG.jpg, D1EG.jpg]) for retrieving the images from the
 # test folder. Map the image names from their codenames in database
@@ -229,6 +231,7 @@ def reverse_dict(item):
                             {"item": item})
         row = cardDB.fetchone()
     return row[0]
+
 
 # Most of the magic happens here. Match each uploaded card with 'trained' images
 def find_matches(dest, train_set):
@@ -320,14 +323,12 @@ def preprocess(im):
 def get_color(im):
     height = 266
     width = 200
-
     # Color is returned in BGR format
     for i in range(height):
         for j in range(width):
             bgr = im[i][j]
             if sum(bgr) > 500:
                 im[i][j] = [0,0,0]
-
     # np.mean averages over all pixels (including black)
     # To count the non-black pixels in image, create a grayscale copy of it
     im1 = cv2.cvtColor( im, cv2.COLOR_RGB2GRAY )
